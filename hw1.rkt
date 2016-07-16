@@ -50,7 +50,7 @@
 (test (big-leaves? (node 5 (leaf 6) (leaf 7))) #t)
 (test (big-leaves? (node 5 (node 2 (leaf 8) (leaf 6)) (leaf 7))) #f)
 
-;; Part 5 — Optional challenge: Sorted?
+;; Part 5 — Optional challenge: Sorted? in-order traversal (中序遍历)
 (define sorted?
   (lambda (x)
     ()))
