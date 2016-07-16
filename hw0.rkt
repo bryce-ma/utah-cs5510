@@ -19,4 +19,14 @@
 
 (42nd-power 17)
 
-()
+(define plural
+  (lambda (x)
+    (let* ([last-index (- (string-length x) 1)]
+          [last (string-ref x last-index)])
+      (if (equal? last #\y)
+          (string-append (substring x 0 last-index)
+                         "ies")
+          (string-append x "s")))))
+
+(plural "baby")
+(plural "fish")
