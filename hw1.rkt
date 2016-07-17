@@ -40,17 +40,28 @@
   (lambda (x)
     (type-case Tree x
       [node (v l r) (and (type-case Tree l
-                          [node (vv ll rr) (big-leaves? (node (+ v vv) ll rr))]
-                          [leaf (lv) (> lv v)])
-                        (type-case Tree r
-                      [node (vv ll rr) (big-leaves? (node (+ v vv) ll rr))]
-                      [leaf (lv) (> lv v)]))]
+                           [node (vv ll rr) (big-leaves? (node (+ v vv) ll rr))]
+                           [leaf (lv) (> lv v)])
+                         (type-case Tree r
+                           [node (vv ll rr) (big-leaves? (node (+ v vv) ll rr))]
+                           [leaf (lv) (> lv v)]))]
       [leaf (v) (> v 0)]))) ;; this line will never be reached 
 
 (test (big-leaves? (node 5 (leaf 6) (leaf 7))) #t)
 (test (big-leaves? (node 5 (node 2 (leaf 8) (leaf 6)) (leaf 7))) #f)
 
 ;; Part 5 — Optional challenge: Sorted? in-order traversal (中序遍历)
-(define sorted?
-  (lambda (x)
-    ()))
+;; plai-typed kind of inner defined procedure forbidden
+(define (within? low high t)
+    (type-case Tree t
+      [node (v l r) (and (<= v high)
+                         (>= v low)
+                         (within? low v l)
+                         (within? v high r))]
+      [leaf (v) (and (<= v high)
+                     (>= v low))]))
+
+(define (sorted? x)
+  (within? 0 100 x))
+
+(test (sorted? (node 6 (leaf 5) (leaf 7))) #t)
