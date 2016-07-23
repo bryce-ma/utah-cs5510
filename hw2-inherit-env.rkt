@@ -12,7 +12,9 @@
         (arg : ExprC)]
   [letC (n : symbol) 
         (rhs : ExprC)
-        (body : ExprC)])
+        (body : ExprC)]
+  [maxC (m : ExprC)
+        (n : ExprC)]) ;; Part 1 — Maximum
 
 (define-type FunDefC
   [fdC (name : symbol) 
@@ -52,6 +54,11 @@
        (letC (s-exp->symbol (first bs))
              (parse (second bs))
              (parse (third (s-exp->list s)))))]
+    [(s-exp-match? '{max ANY ANY} s)   ;; Part 1 — Maximum
+     (let ([p1 (second (s-exp->list s))]
+           [p2 (third (s-exp->list s))])
+       (maxC (parse p1)
+             (parse p2)))]
     [else (error 'parse "invalid input")]))
 
 (define (parse-fundef [s : s-expression]) : FunDefC
@@ -82,12 +89,12 @@
               (idC 'y)))
   (test/exn (parse '{{+ 1 2}})
             "invalid input")
-
+  
   (test (parse-fundef '{define {double x} {+ x x}})
         (fdC 'double 'x (plusC (idC 'x) (idC 'x))))
   (test/exn (parse-fundef '{def {f x} x})
             "invalid input")
-
+  
   (define double-def
     (parse-fundef '{define {double x} {+ x x}}))
   (define quadruple-def
@@ -112,7 +119,13 @@
                   (extend-env 
                    (bind n (interp rhs env fds))
                    env)
-                  fds)]))
+                  fds)]
+    [maxC (m n)
+          (let ([numberM (interp m env fds)]
+                [numberN (interp n env fds)])
+            (if (> numberM numberN)
+                numberM
+                numberN))]))
 
 (module+ test
   (test (interp (parse '2) mt-env empty)
@@ -160,7 +173,15 @@
                               {bad 2}})
                     mt-env
                     (list (parse-fundef '{define {bad x} {+ x y}})))
-            "free variable"))
+            "free variable")
+  (test (interp (parse '{max 1 2})
+                mt-env
+                (list))
+        2)
+  (test (interp (parse '{max {+ 4 5} {+ 2 3}})
+                mt-env
+                (list))
+        9))
 
 ;; get-fundef ----------------------------------------
 (define (get-fundef [s : symbol] [fds : (listof FunDefC)]) : FunDefC
@@ -185,11 +206,11 @@
 ;; lookup ----------------------------------------
 (define (lookup [n : symbol] [env : Env]) : number
   (cond
-   [(empty? env) (error 'lookup "free variable")]
-   [else (cond
-          [(symbol=? n (bind-name (first env)))
-           (bind-val (first env))]
-          [else (lookup n (rest env))])]))
+    [(empty? env) (error 'lookup "free variable")]
+    [else (cond
+            [(symbol=? n (bind-name (first env)))
+             (bind-val (first env))]
+            [else (lookup n (rest env))])]))
 
 (module+ test
   (test/exn (lookup 'x mt-env)
@@ -204,4 +225,4 @@
                     (bind 'x 9)
                     (extend-env (bind 'y 8) mt-env)))
         8))
-  
+
