@@ -13,8 +13,10 @@
   [letC (n : symbol) 
         (rhs : ExprC)
         (body : ExprC)]
-  [maxC (m : ExprC)
-        (n : ExprC)]) ;; Part 1 — Maximum
+  [maxC (m : ExprC)  ;; Part 1 — Maximum
+        (n : ExprC)]
+  [unletC (varname : symbol) ;; Part 2 — Hiding Variables
+          (body : ExprC)]) 
 
 (define-type FunDefC
   [fdC (name : symbol) 
@@ -59,6 +61,10 @@
            [p2 (third (s-exp->list s))])
        (maxC (parse p1)
              (parse p2)))]
+    [(s-exp-match? '{unlet SYMBOL ANY} s)  ;; Part 2 — Hiding Variables
+     (let ([slist (s-exp->list s)])
+       (unletC (s-exp->symbol (second slist))
+             (parse (third slist))))]
     [else (error 'parse "invalid input")]))
 
 (define (parse-fundef [s : s-expression]) : FunDefC
@@ -125,7 +131,13 @@
                 [numberN (interp n env fds)])
             (if (> numberM numberN)
                 numberM
-                numberN))]))
+                numberN))]
+    [unletC (name body)
+            (interp body
+                    (lookup-and-unbind
+                     name
+                     env)
+                    fds)]))
 
 (module+ test
   (test (interp (parse '2) mt-env empty)
@@ -174,6 +186,8 @@
                     mt-env
                     (list (parse-fundef '{define {bad x} {+ x y}})))
             "free variable")
+  
+  ;; tests for part 1 ---------------------------
   (test (interp (parse '{max 1 2})
                 mt-env
                 (list))
@@ -181,7 +195,39 @@
   (test (interp (parse '{max {+ 4 5} {+ 2 3}})
                 mt-env
                 (list))
-        9))
+        9)
+  
+  ;; test cases for part 2 ----------------------
+  (test/exn (interp (parse '{let {[x 1]}
+                              {unlet x
+                                     x}})
+                    mt-env
+                    (list))
+            "free variable")
+  (test (interp (parse '{let {[x 1]}
+                          {+ x {unlet x 1}}})
+                mt-env (list))
+        2)
+  (test (interp (parse '{let {[x 1]}
+                          {let {[x 2]}
+                            {+ x {unlet x x}}}})
+                mt-env
+                (list))
+        3)
+  (test (interp (parse '{let {[x 1]}
+                          {let {[x 2]}
+                            {let {[z 3]}
+                              {+ x {unlet x {+ x z}}}}}})
+                mt-env
+                (list))
+        6)
+  (test (interp (parse '{f 2})
+                mt-env
+                (list (parse-fundef '{define {f z}
+                                       {let {[z 8]}
+                                         {unlet z
+                                                z}}})))
+        2))
 
 ;; get-fundef ----------------------------------------
 (define (get-fundef [s : symbol] [fds : (listof FunDefC)]) : FunDefC
@@ -211,6 +257,15 @@
             [(symbol=? n (bind-name (first env)))
              (bind-val (first env))]
             [else (lookup n (rest env))])]))
+
+;; Part 2 — Hiding Variables
+(define (lookup-and-unbind [name : symbol] [env : Env]) : Env
+  (cond
+    [(empty? env) (error 'lookup-and-unbind "free variable")]
+    [else (cond
+            [(symbol=? name (bind-name (first env)))
+             (rest env)] ;; eliminate the nearest one
+            [else (extend-env (first env) (lookup-and-unbind name (rest env)))])]))
 
 (module+ test
   (test/exn (lookup 'x mt-env)
