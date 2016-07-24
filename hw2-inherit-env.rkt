@@ -65,7 +65,7 @@
      (let ([slist (s-exp->list s)])
        (unletC (s-exp->symbol (second slist))
                (parse (third slist))))]
-    [(s-exp-match? '{SYMBOL ANY ...} s)  ;; ANY represent the args list (a listof s-expression) 
+    [(s-exp-match? '{SYMBOL ANY ...} s)  ;; ANY ... represent the args list (a listof s-expression) 
      (let ([args (rest (s-exp->list s))])
        (appC (s-exp->symbol (first (s-exp->list s)))
              (map parse args)))]
@@ -123,7 +123,7 @@
                              (if (= (length (fdC-arg fd)) (length arg))
                                  (map2 bind
                                        (fdC-arg fd)
-                                       (interp-exprc-list arg env fds))
+                                       (interp-exprc-list arg env fds))  ;; calculate(interp) the arguments' value at first
                                  (error 'parse "wrong arity"))
                              mt-env)
                             fds))]
