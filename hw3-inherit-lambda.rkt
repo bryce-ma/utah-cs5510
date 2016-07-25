@@ -6,7 +6,8 @@
   [boolV (b : boolean)]  ;; for part 1
   [closV (arg : symbol)
          (body : ExprC)
-         (env : Env)])
+         (env : Env)]
+  [thunkV (exp : ExprC)])
 
 (define-type ExprC
   [numC (n : number)]
@@ -27,7 +28,9 @@
   [lamC (n : symbol)
         (body : ExprC)]
   [appC (fun : ExprC)
-        (arg : ExprC)])
+        (arg : ExprC)]
+  [delayC (exp : ExprC)]
+  [forceC (body : ExprC)])
 
 (define-type Binding
   [bind (name : symbol)
@@ -73,6 +76,13 @@
      (lamC (s-exp->symbol (first (s-exp->list 
                                   (second (s-exp->list s)))))
            (parse (third (s-exp->list s))))]
+    ;; must before application
+    [(s-exp-match? '{delay ANY} s)
+     (delayC (parse (second (s-exp->list s))))]
+    [(s-exp-match? '{force ANY} s)
+     (let ([delayed (second (s-exp->list s))])
+         (forceC (parse delayed)))]
+    
     [(s-exp-match? '{ANY ANY} s)
      (appC (parse (first (s-exp->list s)))
            (parse (second (s-exp->list s))))]
@@ -131,7 +141,19 @@
                                       (bind n
                                             (interp arg env))
                                       c-env))]
-                      [else (error 'interp "not a function")])]))
+                      [else (error 'interp "not a function")])]
+    ;; for part 2
+    [delayC (exp) (thunkV exp)]
+    [forceC (body) (let ([delayed (interp body env)])
+                     (type-case Value delayed
+                       [thunkV (e) (interp e env)]
+                       [else (error 'interp "not a thunk")]))]))
+
+;; interp only idC
+(define (interp-only-idC [a : ExprC] [env : Env]) : Value
+  (type-case ExprC a
+    [idC (s) (lookup s env)]
+    [else (boolV false)]))
 
 (module+ test
   (test (interp (parse '2) mt-env)
@@ -196,6 +218,21 @@
                     mt-env)
             "not a boolean")
   
+  ;; test for part 2
+  (test/exn (interp (parse '{force 1})
+                    mt-env)
+            "not a thunk")
+  (test (interp (parse '{force {if {= 8 8} {delay 7} {delay 9}}})
+                mt-env)
+        (interp (parse '7)
+                mt-env))
+  (test (interp (parse '{let {[d {let {[y 8]}
+                                   {delay {+ y 7}}}]}
+                          {let {[y 9]}
+                            {force d}}})
+                mt-env)
+        (interp (parse '15)
+                mt-env))
   #;
   (time (interp (parse '{let {[x2 {lambda {n} {+ n n}}]}
                           {let {[x4 {lambda {n} {x2 {x2 n}}}]}
