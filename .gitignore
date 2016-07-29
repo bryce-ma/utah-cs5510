@@ -8,6 +8,7 @@
 !*.rkt
 !*.scm
 !*.md
+!*.pdf
 
 # ...even if they are in subdirectories
 !*/

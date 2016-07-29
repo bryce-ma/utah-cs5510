@@ -149,8 +149,8 @@
                        [thunkV (e) (interp e env)]
                        [else (error 'interp "not a thunk")]))]))
 
-;; interp only idC
-(define (interp-only-idC [a : ExprC] [env : Env]) : Value
+;; interp only idC todo
+(define (interp-idC-only [a : ExprC] [env : Env]) : Value
   (type-case ExprC a
     [idC (s) (lookup s env)]
     [else (boolV false)]))
