@@ -28,8 +28,7 @@
   [unboxC (arg : ExprC)]
   [setboxC (bx : ExprC)
            (val : ExprC)]
-  [beginC (l : ExprC)
-          (r : ExprC)])
+  [beginC (r : (listof ExprC))])
 
 (define-type Binding
   [bind (name : symbol)
@@ -90,9 +89,8 @@
     [(s-exp-match? '{set-box! ANY ANY} s)
      (setboxC (parse (second (s-exp->list s)))
               (parse (third (s-exp->list s))))]
-    [(s-exp-match? '{begin ANY ANY} s)
-     (beginC (parse (second (s-exp->list s)))
-             (parse (third (s-exp->list s))))]
+    [(s-exp-match? '{begin ANY ...} s)
+     (beginC (map parse (rest (s-exp->list s))))]
     [(s-exp-match? '{ANY ANY} s)
      (appC (parse (first (s-exp->list s)))
            (parse (second (s-exp->list s))))]
@@ -125,7 +123,7 @@
   (test (parse '{set-box! b 0})
         (setboxC (idC 'b) (numC 0)))
   (test (parse '{begin 1 2})
-        (beginC (numC 1) (numC 2)))
+        (beginC (list (numC 1) (numC 2))))
   (test/exn (parse '{{+ 1 2}})
             "invalid input"))
 
@@ -190,9 +188,14 @@
                                       (override-store (cell l v-v)
                                                       sto-v))]
                            [else (error 'interp "not a box")])))]
-    [beginC (l r)
-            (with [(v-l sto-l) (interp l env sto)]
-                  (interp r env sto-l))]))
+    [beginC (elist)
+            (local [(define sequence-and-return
+                      (lambda (alist store)
+                        (if (empty? (rest alist))
+                            (interp (first alist) env store)
+                            (with [(v-l sto-l) (interp (first alist) env store)]
+                                  (sequence-and-return (rest alist) sto-l)))))]
+              (sequence-and-return elist sto))]))
 
 (module+ test
   (test (interp (parse '2) mt-env mt-store)
@@ -292,6 +295,7 @@
                     mt-store)
             "free variable")
   
+  ;; part 1
   (test (interp (parse '{let {[b {box 1}]}
                           {begin
                             {set-box! b 2}
@@ -300,6 +304,18 @@
                 mt-store)
         (v*s (numV 2)
              (override-store (cell 1 (numV 2))
+                             mt-store)))
+  ;; part 2
+  (test (interp (parse '{let {[b {box 1}]}
+                          {begin
+                            {set-box! b {+ 2 {unbox b}}}
+                            {set-box! b {+ 3 {unbox b}}}
+                            {set-box! b {+ 4 {unbox b}}}
+                            {unbox b}}})
+                mt-env
+                mt-store)
+        (v*s (numV 10)
+             (override-store (cell 1 (numV 10))
                              mt-store)))
   )
 
