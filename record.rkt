@@ -5,7 +5,9 @@
   [numV (n : number)]
   [closV (arg : symbol)
          (body : ExprC)
-         (env : Env)])
+         (env : Env)]
+  [recV (ns : (listof symbol))
+        (vs : (listof Value))])
 
 (define-type ExprC
   [numC (n : number)]
@@ -20,7 +22,14 @@
   [lamC (n : symbol)
         (body : ExprC)]
   [appC (fun : ExprC)
-        (arg : ExprC)])
+        (arg : ExprC)]
+  [recordC (ns : (listof symbol))
+           (args : (listof ExprC))]
+  [getC (rec : ExprC)
+        (n : symbol)]
+  [setC (rec : ExprC)
+        (n : symbol)
+        (val : ExprC)])
 
 (define-type Binding
   [bind (name : symbol)
@@ -56,6 +65,19 @@
      (lamC (s-exp->symbol (first (s-exp->list 
                                   (second (s-exp->list s)))))
            (parse (third (s-exp->list s))))]
+
+    [(s-exp-match? '{record {SYMBOL ANY} ...} s)
+     (recordC (map (lambda (l) (s-exp->symbol (first (s-exp->list l))))
+                   (rest (s-exp->list s)))
+              (map (lambda (l) (parse (second (s-exp->list l))))
+                   (rest (s-exp->list s))))]
+    [(s-exp-match? '{get ANY SYMBOL} s)
+     (getC (parse (second (s-exp->list s)))
+           (s-exp->symbol (third (s-exp->list s))))]
+    [(s-exp-match? '{set ANY SYMBOL ANY} s)
+     (setC (parse (second (s-exp->list s)))
+           (s-exp->symbol (third (s-exp->list s)))
+           (parse (fourth (s-exp->list s))))]
     [(s-exp-match? '{ANY ANY} s)
      (appC (parse (first (s-exp->list s)))
            (parse (second (s-exp->list s))))]
@@ -81,6 +103,13 @@
         (lamC 'x (numC 9)))
   (test (parse '{double 9})
         (appC (idC 'double) (numC 9)))
+  (test (parse '{record {x 2} {y 3}})
+        (recordC (list 'x 'y)
+                 (list (numC 2) (numC 3))))
+  (test (parse '{get {+ 1 2} a})
+        (getC (plusC (numC 1) (numC 2)) 'a))
+  (test (parse '{set {+ 1 2} a 7})
+        (setC (plusC (numC 1) (numC 2)) 'a (numC 7)))
   (test/exn (parse '{{+ 1 2}})
             "invalid input"))
 
@@ -105,7 +134,20 @@
                                       (bind n
                                             (interp arg env))
                                       c-env))]
-                      [else (error 'interp "not a function")])]))
+                      [else (error 'interp "not a function")])]
+    [recordC (ns as)
+             (recV ns
+                   (map (lambda (a) (interp a env))
+                        as))]
+    [getC (a n)
+          (type-case Value (interp a env)
+            [recV (ns vs) (find n ns vs)]
+            [else (error 'interp "not a record")])]
+    [setC (a n v)
+          (type-case Value (interp a env)
+            [recV (ns vs)
+                  (recV ns (update n (interp v env) ns vs))]
+            [else (error 'interp "not a record")])]))
 
 (module+ test
   (test (interp (parse '2) mt-env)
@@ -143,6 +185,31 @@
                 mt-env)
         (numV 16))
 
+  (test (interp (parse '{record {a {+ 1 1}}
+                                {b {+ 2 2}}})
+                mt-env)
+        (recV (list 'a 'b) 
+              (list (numV 2) (numV 4))))
+  (test (interp (parse '{get {record {a {+ 1 1}}
+                                     {b {+ 2 2}}} a})
+                mt-env)
+        (numV 2))
+  (test (interp (parse '{get {record {a {+ 1 1}}
+                                     {b {+ 2 2}}} b})
+                mt-env)
+        (numV 4))
+  (test (interp (parse '{set {record {a {+ 1 1}}
+                                     {b {+ 2 2}}} a 5})
+                mt-env)
+        (recV (list 'a 'b) 
+              (list (numV 5) (numV 4))))
+  (test (interp (parse '{let {[r1 {record {a {+ 1 1}}
+                                          {b {+ 2 2}}}]}
+                          {let {[r2 {set r1 a 5}]}
+                            {+ {get r1 a} {get r2 a}}}})
+                mt-env)
+        (numV 7))
+
   (test/exn (interp (parse '{1 2}) mt-env)
             "not a function")
   (test/exn (interp (parse '{+ 1 {lambda {x} x}}) mt-env)
@@ -151,16 +218,7 @@
                               {let {[y 5]}
                                 {bad 2}}})
                     mt-env)
-            "free variable")
-
-  #;
-  (time (interp (parse '{let {[x2 {lambda {n} {+ n n}}]}
-                          {let {[x4 {lambda {n} {x2 {x2 n}}}]}
-                            {let {[x16 {lambda {n} {x4 {x4 n}}}]}
-                              {let {[x256 {lambda {n} {x16 {x16 n}}}]}
-                                {let {[x65536 {lambda {n} {x256 {x256 n}}}]}
-                                  {x65536 1}}}}}})
-                mt-env)))
+            "free variable"))
 
 ;; num+ and num* ----------------------------------------
 (define (num-op [op : (number number -> number)] [l : Value] [r : Value]) : Value
@@ -202,7 +260,47 @@
                     (bind 'x (numV 9))
                     (extend-env (bind 'y (numV 8)) mt-env)))
         (numV 8)))
+  
+;; find & update ----------------------------------------
 
-(module+ test-recursive-functions ;; this interpreter can't interpret recursive functions
-  (interp (parse '{let {[f {lambda {n} {* n  8}}]}
-                    {f 8}}) mt-env))
+;; Takes a name and two parallel lists, returning an item from the
+;; second list where the name matches the item from the first list.
+(define (find [n : symbol] [ns : (listof symbol)] [vs : (listof Value)])
+  : Value
+  (cond
+   [(empty? ns) (error 'interp "no such field")]
+   [else (if (symbol=? n (first ns))
+             (first vs)
+             (find n (rest ns) (rest vs)))]))
+
+;; Takes a name n, value v, and two parallel lists, returning a list
+;; like the second of the given lists, but with v in place
+;; where n matches the item from the first list.
+(define (update [n : symbol] [v : Value]
+                [ns : (listof symbol)] [vs : (listof Value)])
+  : (listof Value)
+  (cond
+   [(empty? ns) (error 'interp "no such field")]
+   [else (if (symbol=? n (first ns))
+             (cons v (rest vs))
+             (cons (first vs) 
+                   (update n v (rest ns) (rest vs))))]))
+
+(module+ test
+  (test (find 'a (list 'a 'b) (list (numV 1) (numV 2)))
+        (numV 1))
+  (test (find 'b (list 'a 'b) (list (numV 1) (numV 2)))
+        (numV 2))
+  (test/exn (find 'a empty empty)
+            "no such field")
+
+  (test (update 'a (numV 0) (list 'a 'b) (list (numV 1) (numV 2)))
+        (list (numV 0) (numV 2)))
+  (test (update 'b (numV 0) (list 'a 'b) (list (numV 1) (numV 2)))
+        (list (numV 1) (numV 0)))
+  (test/exn (update 'a (numV 0) empty empty)
+            "no such field"))
+
+
+  
+

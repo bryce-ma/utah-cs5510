@@ -62,6 +62,6 @@
                      (>= v low))]))
 
 (define (sorted? x)
-  (within? -100000 100000 x))
+  (within? -inf.0 +inf.0 x))
 
 (test (sorted? (node 6 (leaf 5) (leaf 7))) #t)
